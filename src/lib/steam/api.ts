@@ -21,6 +21,10 @@ type RawProfileResponse = {
   communityvisibilitystate?: number;
 };
 
+type ResolvedBatchInput =
+  | { input: string; steamId: string }
+  | { input: string; error: string };
+
 export function getSteamApiKey(): string {
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey) {
@@ -70,19 +74,47 @@ export async function lookupSteamAccount(input: string): Promise<SteamLookupResu
 
 export async function lookupSteamBatch(inputs: string[]): Promise<BatchLookupRow[]> {
   const uniqueInputs = Array.from(new Set(inputs.map((input) => input.trim()).filter(Boolean)));
-  return Promise.all(
+  const resolvedRows: ResolvedBatchInput[] = await Promise.all(
     uniqueInputs.map(async (input) => {
       try {
-        return { input, status: "success", result: await lookupSteamAccount(input) } satisfies BatchLookupRow;
+        return { input, steamId: await resolveSteamId(input) };
       } catch (error) {
-        return {
-          input,
-          status: "failed",
-          error: error instanceof Error ? error.message : "Unknown lookup error",
-        } satisfies BatchLookupRow;
+        return { input, error: error instanceof Error ? error.message : "Resolve failed" };
       }
     }),
   );
+
+  const steamIds = resolvedRows
+    .filter((row): row is { input: string; steamId: string } => "steamId" in row && Boolean(row.steamId))
+    .map((row) => row.steamId);
+  const [banMap, profileMap] = await Promise.all([
+    fetchPlayerBansChunked(steamIds),
+    fetchPlayerSummariesChunked(steamIds),
+  ]);
+
+  const checkedAt = new Date().toISOString();
+  return resolvedRows.map((row): BatchLookupRow => {
+    if ("error" in row) {
+      return { input: row.input, status: "failed", error: row.error };
+    }
+
+    const ban = banMap.get(row.steamId);
+    if (!ban) {
+      return { input: row.input, status: "failed", error: "Steam returned no ban data for this account" };
+    }
+
+    return {
+      input: row.input,
+      status: "success",
+      result: {
+        input: row.input,
+        steamId: row.steamId,
+        ban,
+        profile: profileMap.get(row.steamId),
+        checkedAt,
+      },
+    };
+  });
 }
 
 export async function resolveSteamId(input: string): Promise<string> {
@@ -118,6 +150,11 @@ async function fetchPlayerBans(steamIds: string[]): Promise<Map<string, SteamBan
   return new Map((data.players ?? []).map((row) => [row.SteamId, normalizeBanResponse(row)]));
 }
 
+async function fetchPlayerBansChunked(steamIds: string[]): Promise<Map<string, SteamBanStatus>> {
+  const maps = await Promise.all(chunk(steamIds, 100).map(fetchPlayerBans));
+  return mergeMaps(maps);
+}
+
 async function fetchPlayerSummaries(steamIds: string[]): Promise<Map<string, SteamProfileSummary>> {
   const apiKey = getSteamApiKey();
   const url = new URL(`${STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/`);
@@ -128,10 +165,33 @@ async function fetchPlayerSummaries(steamIds: string[]): Promise<Map<string, Ste
   return new Map((data.response?.players ?? []).map((row) => [row.steamid, normalizeProfileResponse(row)]));
 }
 
+async function fetchPlayerSummariesChunked(steamIds: string[]): Promise<Map<string, SteamProfileSummary>> {
+  const maps = await Promise.all(chunk(steamIds, 100).map(fetchPlayerSummaries));
+  return mergeMaps(maps);
+}
+
 async function fetchJson<T>(url: URL): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Steam API request failed with HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function mergeMaps<K, V>(maps: Array<Map<K, V>>): Map<K, V> {
+  const merged = new Map<K, V>();
+  for (const map of maps) {
+    for (const [key, value] of map) {
+      merged.set(key, value);
+    }
+  }
+  return merged;
 }

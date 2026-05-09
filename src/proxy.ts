@@ -12,6 +12,7 @@ export function proxy(request: NextRequest) {
   if (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
+    pathname === "/login" ||
     pathname === "/favicon.ico" ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
   ) {

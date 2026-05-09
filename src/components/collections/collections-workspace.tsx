@@ -2,9 +2,12 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { AccountCollection } from "@/lib/storage/types";
 import { deleteCollection, listCollections, renameCollection, saveQueryRun } from "@/lib/storage/repositories";
 import { lookupBatch } from "@/lib/steam/client";
+import { hasAnySuccessfulLookup } from "@/lib/steam/batch-policy";
+import { saveCurrentBatchResult } from "@/lib/storage/session-results";
 import { formatDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -15,6 +18,7 @@ export function CollectionsWorkspace() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   const refresh = () => {
     listCollections().then(setCollections);
@@ -26,6 +30,11 @@ export function CollectionsWorkspace() {
     startTransition(async () => {
       try {
         const rows = await lookupBatch(collection.identifiers);
+        saveCurrentBatchResult({ title: collection.name, rows, source: "collection" });
+        if (!hasAnySuccessfulLookup(rows)) {
+          setMessage(`集合 ${collection.name} 全部查询失败，未写入历史。请检查 API key 或稍后重试。`);
+          return;
+        }
         await saveQueryRun({
           kind: "batch",
           title: collection.name,
@@ -33,8 +42,9 @@ export function CollectionsWorkspace() {
           inputs: collection.identifiers,
           rows,
         });
-        setMessage(`已重新查询 ${collection.name}。结果已写入 History。`);
+        setMessage(`已重新查询 ${collection.name}。正在跳转到 Search 显示结果。`);
         refresh();
+        router.push("/");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "集合查询失败。");
       }

@@ -5,9 +5,11 @@ import { motion } from "framer-motion";
 import { FileUp, Search, RefreshCw } from "lucide-react";
 import { parseAccountImport } from "@/lib/import/parse-import";
 import { lookupAccount, lookupBatch, fetchHealth } from "@/lib/steam/client";
+import { hasAnySuccessfulLookup } from "@/lib/steam/batch-policy";
 import type { BatchLookupRow, SteamLookupResult } from "@/lib/steam/types";
 import { createCollection, saveQueryRun } from "@/lib/storage/repositories";
 import { summarizeBatchRows } from "@/lib/storage/summary";
+import { consumeCurrentBatchResult, saveCurrentBatchResult } from "@/lib/storage/session-results";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -28,6 +30,16 @@ export function SearchWorkspace() {
     fetchHealth()
       .then((health) => setApiReady(health.steamApiKeyConfigured))
       .catch(() => setApiReady(false));
+    queueMicrotask(() => {
+      const transferredBatch = consumeCurrentBatchResult();
+      if (!transferredBatch) {
+        return;
+      }
+      setBatchTitle(transferredBatch.title);
+      setBatchRows(transferredBatch.rows);
+      setSingleResult(null);
+      setMessage(`已从 ${transferredBatch.source === "collection" ? "Collections" : "导入"} 打开批量结果。`);
+    });
   }, []);
 
   const runSingleLookup = () => {
@@ -59,22 +71,21 @@ export function SearchWorkspace() {
       try {
         const content = await file.text();
         const parsed = parseAccountImport(content, file.name);
+        setSingleResult(null);
+        setBatchTitle(parsed.name);
+        const rows = await lookupBatch(parsed.identifiers);
+        setBatchRows(rows);
+        saveCurrentBatchResult({ title: parsed.name, rows, source: "import" });
+        if (!hasAnySuccessfulLookup(rows)) {
+          setMessage("这批账号全部查询失败，未保存为集合。请检查文件格式或 API key 后重试。");
+          return;
+        }
         const collection = await createCollection({
           name: parsed.name,
           sourceFileName: file.name,
           identifiers: parsed.identifiers,
         });
-        setSingleResult(null);
-        setBatchTitle(parsed.name);
-        const rows = await lookupBatch(parsed.identifiers);
-        setBatchRows(rows);
-        await saveQueryRun({
-          kind: "batch",
-          title: parsed.name,
-          collectionId: collection.id,
-          inputs: parsed.identifiers,
-          rows,
-        });
+        await saveQueryRun({ kind: "batch", title: parsed.name, collectionId: collection.id, inputs: parsed.identifiers, rows });
         const rejected = parsed.rejectedRows.length ? `，跳过 ${parsed.rejectedRows.length} 行无效数据` : "";
         setMessage(`已保存集合 ${parsed.name}${rejected}。`);
       } catch (error) {
@@ -122,6 +133,15 @@ export function SearchWorkspace() {
               event.currentTarget.value = "";
             }}
           />
+        </div>
+        <div className="mx-auto mt-3 max-w-2xl rounded-md border border-slate-200 bg-white px-4 py-3 text-left text-xs leading-6 text-slate-600 shadow-sm">
+          <strong className="text-slate-800">支持格式：</strong>
+          TXT 每行一个 SteamID64 / Profile URL / Vanity URL；CSV 可包含表头
+          <code className="mx-1 rounded bg-slate-100 px-1">steamid</code>
+          <code className="mx-1 rounded bg-slate-100 px-1">profile_url</code>
+          <code className="mx-1 rounded bg-slate-100 px-1">url</code>
+          <code className="mx-1 rounded bg-slate-100 px-1">vanity</code>
+          ，没有表头时读取每行第一个非空列。
         </div>
         <div className="mt-4 flex items-center justify-center gap-3 text-sm">
           {apiReady === false ? (

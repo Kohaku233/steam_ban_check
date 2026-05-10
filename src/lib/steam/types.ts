@@ -16,10 +16,23 @@ export type SteamProfileSummary = {
   visibilityState?: number;
 };
 
+export type SteamProfileTimeline = {
+  steamId: string;
+  memberSince?: string;
+  currentLevel?: number;
+  currentXp?: number;
+  firstBadgeAt?: string;
+  firstLevelTwoAt?: string;
+  badgesCount?: number;
+  sources: Array<"profile_xml" | "player_badges">;
+  privacyLimited: boolean;
+};
+
 export type SteamLookupResult = {
   input: string;
   steamId: string;
   profile?: SteamProfileSummary;
+  timeline?: SteamProfileTimeline;
   ban: SteamBanStatus;
   checkedAt: string;
 };

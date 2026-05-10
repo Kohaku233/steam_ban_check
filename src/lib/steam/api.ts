@@ -1,5 +1,6 @@
 import { parseSteamIdentifier } from "./parse";
-import type { BatchLookupRow, SteamBanStatus, SteamLookupResult, SteamProfileSummary } from "./types";
+import { buildProfileTimeline, type RawBadgesResponse } from "./timeline";
+import type { BatchLookupRow, SteamBanStatus, SteamLookupResult, SteamProfileSummary, SteamProfileTimeline } from "./types";
 
 const STEAM_API_BASE = "https://api.steampowered.com";
 
@@ -57,7 +58,11 @@ export function normalizeProfileResponse(row: RawProfileResponse): SteamProfileS
 
 export async function lookupSteamAccount(input: string): Promise<SteamLookupResult> {
   const steamId = await resolveSteamId(input);
-  const [banMap, profileMap] = await Promise.all([fetchPlayerBans([steamId]), fetchPlayerSummaries([steamId])]);
+  const [banMap, profileMap, timeline] = await Promise.all([
+    fetchPlayerBans([steamId]),
+    fetchPlayerSummaries([steamId]),
+    fetchProfileTimeline(steamId),
+  ]);
   const ban = banMap.get(steamId);
   if (!ban) {
     throw new Error("Steam returned no ban data for this account");
@@ -68,6 +73,7 @@ export async function lookupSteamAccount(input: string): Promise<SteamLookupResu
     steamId,
     ban,
     profile: profileMap.get(steamId),
+    timeline,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -170,12 +176,42 @@ async function fetchPlayerSummariesChunked(steamIds: string[]): Promise<Map<stri
   return mergeMaps(maps);
 }
 
+async function fetchProfileTimeline(steamId: string): Promise<SteamProfileTimeline> {
+  const apiKey = getSteamApiKey();
+  const profileXmlUrl = new URL(`https://steamcommunity.com/profiles/${steamId}/`);
+  profileXmlUrl.searchParams.set("xml", "1");
+
+  const badgesUrl = new URL(`${STEAM_API_BASE}/IPlayerService/GetBadges/v1/`);
+  badgesUrl.searchParams.set("key", apiKey);
+  badgesUrl.searchParams.set("steamid", steamId);
+  badgesUrl.searchParams.set("format", "json");
+
+  const [xmlResult, badgesResult] = await Promise.allSettled([
+    fetchText(profileXmlUrl),
+    fetchJson<RawBadgesResponse>(badgesUrl),
+  ]);
+
+  return buildProfileTimeline({
+    steamId,
+    xml: xmlResult.status === "fulfilled" ? xmlResult.value : undefined,
+    badges: badgesResult.status === "fulfilled" ? badgesResult.value : undefined,
+  });
+}
+
 async function fetchJson<T>(url: URL): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Steam API request failed with HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+async function fetchText(url: URL): Promise<string> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Steam request failed with HTTP ${response.status}`);
+  }
+  return response.text();
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

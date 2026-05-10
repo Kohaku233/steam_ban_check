@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ExternalLink } from "lucide-react";
+import { CalendarClock, ExternalLink, ShieldCheck, Sparkles } from "lucide-react";
 import type { SteamLookupResult } from "@/lib/steam/types";
 import { formatDateTime } from "@/lib/utils";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -44,6 +44,7 @@ export function AccountDetail({ result }: { result: SteamLookupResult }) {
         <Metric label="Economy" value={result.ban.economyBan} danger={result.ban.economyBan !== "none"} />
         <Metric label="Last ban" value={result.ban.daysSinceLastBan ? `${result.ban.daysSinceLastBan} days` : "-"} />
       </dl>
+      {result.timeline ? <ProfileTimeline result={result} /> : null}
       <p className="mt-4 text-xs text-slate-500">Checked {formatDateTime(result.checkedAt)}</p>
     </section>
   );
@@ -56,6 +57,69 @@ function Metric({ label, value, danger = false }: { label: string; value: string
       <dd className={danger ? "mt-1 text-lg font-bold text-rose-700" : "mt-1 text-lg font-bold text-slate-950"}>
         {value}
       </dd>
+    </div>
+  );
+}
+
+function ProfileTimeline({ result }: { result: SteamLookupResult }) {
+  const timeline = result.timeline;
+  if (!timeline) {
+    return null;
+  }
+
+  const items = [
+    {
+      icon: CalendarClock,
+      label: "Member since",
+      value: timeline.memberSince ?? "Unavailable",
+      muted: !timeline.memberSince,
+    },
+    {
+      icon: Sparkles,
+      label: "First badge",
+      value: timeline.firstBadgeAt ? formatDateTime(timeline.firstBadgeAt) : "Unavailable",
+      muted: !timeline.firstBadgeAt,
+    },
+    {
+      icon: ShieldCheck,
+      label: "First reached Level 2",
+      value: timeline.firstLevelTwoAt ? formatDateTime(timeline.firstLevelTwoAt) : "Not visible / not reached",
+      muted: !timeline.firstLevelTwoAt,
+    },
+  ];
+
+  return (
+    <div className="mt-6 rounded-md border border-slate-200 bg-slate-950 p-4 text-white">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-200">Profile Timeline</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            Public profile and badge timeline. Private profiles may return partial data.
+          </p>
+        </div>
+        <div className="text-sm font-semibold text-sky-200">
+          Level {timeline.currentLevel ?? "-"} {typeof timeline.currentXp === "number" ? `· ${timeline.currentXp} XP` : ""}
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="rounded-md border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <Icon size={14} /> {item.label}
+              </div>
+              <div className={item.muted ? "mt-2 text-sm font-semibold text-slate-500" : "mt-2 text-sm font-semibold text-white"}>
+                {item.value}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        Sources: {timeline.sources.length ? timeline.sources.join(", ") : "none"} · Badges:{" "}
+        {timeline.badgesCount ?? 0}
+      </p>
     </div>
   );
 }

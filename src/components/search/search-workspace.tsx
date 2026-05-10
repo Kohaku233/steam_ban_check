@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { FileUp, Search, RefreshCw } from "lucide-react";
 import { parseAccountImport } from "@/lib/import/parse-import";
-import { lookupAccount, lookupBatch, fetchHealth } from "@/lib/steam/client";
+import { lookupAccount, fetchHealth } from "@/lib/steam/client";
+import { runChunkedBatchLookup, type BatchLookupProgress } from "@/lib/steam/batch-runner";
 import { hasAnySuccessfulLookup } from "@/lib/steam/batch-policy";
 import type { BatchLookupRow, SteamLookupResult } from "@/lib/steam/types";
 import { createCollection, saveQueryRun } from "@/lib/storage/repositories";
@@ -22,6 +23,7 @@ export function SearchWorkspace() {
   const [batchRows, setBatchRows] = useState<BatchLookupRow[]>([]);
   const [batchTitle, setBatchTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [batchProgress, setBatchProgress] = useState<BatchLookupProgress | null>(null);
   const [apiReady, setApiReady] = useState<boolean | null>(null);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,8 +75,18 @@ export function SearchWorkspace() {
         const parsed = parseAccountImport(content, file.name);
         setSingleResult(null);
         setBatchTitle(parsed.name);
-        const rows = await lookupBatch(parsed.identifiers);
+        setBatchRows([]);
+        setBatchProgress({
+          completed: 0,
+          total: parsed.identifiers.length,
+          currentChunk: 0,
+          totalChunks: Math.ceil(parsed.identifiers.length / 100),
+        });
+        const rows = await runChunkedBatchLookup(parsed.identifiers, {
+          onProgress: (progress) => setBatchProgress(progress),
+        });
         setBatchRows(rows);
+        setBatchProgress(null);
         saveCurrentBatchResult({ title: parsed.name, rows, source: "import" });
         if (!hasAnySuccessfulLookup(rows)) {
           setMessage("这批账号全部查询失败，未保存为集合。请检查文件格式或 API key 后重试。");
@@ -89,6 +101,7 @@ export function SearchWorkspace() {
         const rejected = parsed.rejectedRows.length ? `，跳过 ${parsed.rejectedRows.length} 行无效数据` : "";
         setMessage(`已保存集合 ${parsed.name}${rejected}。`);
       } catch (error) {
+        setBatchProgress(null);
         setMessage(error instanceof Error ? error.message : "导入失败。");
       }
     });
@@ -157,6 +170,25 @@ export function SearchWorkspace() {
             </span>
           ) : null}
         </div>
+        {batchProgress ? (
+          <div className="mx-auto mt-4 max-w-2xl rounded-md border border-slate-200 bg-white p-3 text-left shadow-sm">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+              <span>Batch progress</span>
+              <span>
+                {batchProgress.completed} / {batchProgress.total}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded bg-slate-100">
+              <div
+                className="h-full rounded bg-sky-700 transition-all"
+                style={{ width: `${batchProgress.total ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Chunk {batchProgress.currentChunk} / {batchProgress.totalChunks}
+            </p>
+          </div>
+        ) : null}
         {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
       </section>
 

@@ -73,18 +73,21 @@ function ProfileTimeline({ result }: { result: SteamLookupResult }) {
       label: "Member since",
       value: timeline.memberSince ?? "Unavailable",
       muted: !timeline.memberSince,
+      accent: "bg-sky-600",
     },
     {
       icon: Sparkles,
       label: "First badge",
       value: timeline.firstBadgeAt ? formatDateTime(timeline.firstBadgeAt) : "Unavailable",
       muted: !timeline.firstBadgeAt,
+      accent: "bg-amber-500",
     },
     {
       icon: ShieldCheck,
       label: "First reached Level 2",
       value: timeline.firstLevelTwoAt ? formatDateTime(timeline.firstLevelTwoAt) : "Not visible / not reached",
       muted: !timeline.firstLevelTwoAt,
+      accent: "bg-emerald-600",
     },
   ];
 
@@ -101,21 +104,29 @@ function ProfileTimeline({ result }: { result: SteamLookupResult }) {
           Level {timeline.currentLevel ?? "-"} {typeof timeline.currentXp === "number" ? `· ${timeline.currentXp} XP` : ""}
         </div>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <ol
+        data-testid="profile-timeline-list"
+        aria-label="Profile timeline events"
+        className="relative mt-5 grid gap-4 md:grid-cols-3"
+      >
+        <div className="absolute left-4 top-4 hidden h-px w-[calc(100%-2rem)] bg-slate-200 md:block" aria-hidden="true" />
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="rounded-md border border-slate-200 bg-white p-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <Icon size={14} /> {item.label}
+            <li key={item.label} className="relative rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-white ${item.accent}`}>
+                  <Icon size={15} />
+                </span>
+                {item.label}
               </div>
               <div className={item.muted ? "mt-2 text-sm font-semibold text-slate-400" : "mt-2 text-sm font-semibold text-slate-950"}>
                 {item.value}
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
       <p className="mt-3 text-xs text-slate-500">
         Sources: {timeline.sources.length ? timeline.sources.join(", ") : "none"} · Badges:{" "}
         {timeline.badgesCount ?? 0}

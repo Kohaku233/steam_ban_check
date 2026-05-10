@@ -44,4 +44,14 @@ describe("AccountDetail", () => {
     expect(timeline).toHaveClass("bg-slate-50");
     expect(timeline).not.toHaveClass("bg-slate-950");
   });
+
+  it("renders profile events as an ordered visual timeline", () => {
+    render(<AccountDetail result={result} />);
+
+    const timeline = screen.getByTestId("profile-timeline-list");
+
+    expect(timeline).toHaveAttribute("aria-label", "Profile timeline events");
+    expect(screen.getByText("Member since")).toBeInTheDocument();
+    expect(screen.getByText("First badge")).toBeInTheDocument();
+  });
 });

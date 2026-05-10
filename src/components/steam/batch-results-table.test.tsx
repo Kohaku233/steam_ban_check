@@ -31,6 +31,28 @@ const baseResult: SteamLookupResult = {
   checkedAt: "2026-05-10T00:00:00.000Z",
 };
 
+function makeRow(index: number): BatchLookupRow {
+  const steamId = `7656119800000${String(index).padStart(5, "0")}`;
+  return {
+    input: steamId,
+    status: "success",
+    result: {
+      ...baseResult,
+      input: steamId,
+      steamId,
+      profile: {
+        ...baseResult.profile!,
+        steamId,
+        personaName: `Account ${index}`,
+      },
+      ban: {
+        ...baseResult.ban,
+        steamId,
+      },
+    },
+  };
+}
+
 describe("BatchResultsTable", () => {
   beforeEach(() => {
     vi.mocked(lookupAccount).mockReset();
@@ -58,5 +80,19 @@ describe("BatchResultsTable", () => {
 
     await waitFor(() => expect(lookupAccount).toHaveBeenCalledWith("76561198793065986"));
     expect(await screen.findByText("August 25, 2025")).toBeInTheDocument();
+  });
+
+  it("paginates large batch result sets", async () => {
+    render(<BatchResultsTable rows={Array.from({ length: 101 }, (_, index) => makeRow(index + 1))} />);
+
+    expect(screen.getByText("Account 1")).toBeInTheDocument();
+    expect(screen.queryByText("Account 101")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 1-100 / 101")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(screen.getByText("Account 101")).toBeInTheDocument();
+    expect(screen.queryByText("Account 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 101-101 / 101")).toBeInTheDocument();
   });
 });

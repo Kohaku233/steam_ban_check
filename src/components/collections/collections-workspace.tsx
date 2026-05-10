@@ -5,7 +5,7 @@ import { RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { AccountCollection } from "@/lib/storage/types";
 import { deleteCollection, listCollections, renameCollection, saveQueryRun } from "@/lib/storage/repositories";
-import { lookupBatch } from "@/lib/steam/client";
+import { runChunkedBatchLookup, type BatchLookupProgress } from "@/lib/steam/batch-runner";
 import { hasAnySuccessfulLookup } from "@/lib/steam/batch-policy";
 import { saveCurrentBatchResult } from "@/lib/storage/session-results";
 import { formatDateTime } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 export function CollectionsWorkspace() {
   const [collections, setCollections] = useState<AccountCollection[]>([]);
   const [message, setMessage] = useState("");
+  const [batchProgress, setBatchProgress] = useState<BatchLookupProgress | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -29,7 +30,16 @@ export function CollectionsWorkspace() {
   const rerunCollection = (collection: AccountCollection) => {
     startTransition(async () => {
       try {
-        const rows = await lookupBatch(collection.identifiers);
+        setBatchProgress({
+          completed: 0,
+          total: collection.identifiers.length,
+          currentChunk: 0,
+          totalChunks: Math.ceil(collection.identifiers.length / 100),
+        });
+        const rows = await runChunkedBatchLookup(collection.identifiers, {
+          onProgress: (progress) => setBatchProgress(progress),
+        });
+        setBatchProgress(null);
         saveCurrentBatchResult({ title: collection.name, rows, source: "collection" });
         if (!hasAnySuccessfulLookup(rows)) {
           setMessage(`集合 ${collection.name} 全部查询失败，未写入历史。请检查 API key 或稍后重试。`);
@@ -46,6 +56,7 @@ export function CollectionsWorkspace() {
         refresh();
         router.push("/");
       } catch (error) {
+        setBatchProgress(null);
         setMessage(error instanceof Error ? error.message : "集合查询失败。");
       }
     });
@@ -59,6 +70,25 @@ export function CollectionsWorkspace() {
       </header>
 
       {message ? <p className="rounded-md bg-slate-100 px-4 py-3 text-sm text-slate-700">{message}</p> : null}
+      {batchProgress ? (
+        <div className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+            <span>Batch progress</span>
+            <span>
+              {batchProgress.completed} / {batchProgress.total}
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded bg-slate-100">
+            <div
+              className="h-full rounded bg-sky-700 transition-all"
+              style={{ width: `${batchProgress.total ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Chunk {batchProgress.currentChunk} / {batchProgress.totalChunks}
+          </p>
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         {collections.map((collection) => (

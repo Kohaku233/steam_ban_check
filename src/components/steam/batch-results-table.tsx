@@ -9,11 +9,13 @@ import {
 } from "@tanstack/react-table";
 import type { BatchLookupRow, SteamLookupResult } from "@/lib/steam/types";
 import { StatusPill } from "@/components/ui/status-pill";
+import { lookupAccount } from "@/lib/steam/client";
 import { AccountDetail } from "./account-detail";
 import { hasAnyBan } from "./ban-helpers";
 
 export function BatchResultsTable({ rows }: { rows: BatchLookupRow[] }) {
   const [selected, setSelected] = useState<SteamLookupResult | null>(null);
+  const [detailMessage, setDetailMessage] = useState("");
   const columns = useMemo<ColumnDef<BatchLookupRow>[]>(
     () => [
       {
@@ -66,6 +68,29 @@ export function BatchResultsTable({ rows }: { rows: BatchLookupRow[] }) {
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
 
+  const selectRow = async (row: BatchLookupRow) => {
+    if (row.status === "failed") {
+      setSelected(null);
+      setDetailMessage(row.error);
+      return;
+    }
+
+    setSelected(row.result);
+    if (row.result.timeline) {
+      setDetailMessage("");
+      return;
+    }
+
+    setDetailMessage("Loading full profile details...");
+    try {
+      const fullResult = await lookupAccount(row.result.steamId);
+      setSelected(fullResult);
+      setDetailMessage("");
+    } catch (error) {
+      setDetailMessage(error instanceof Error ? error.message : "Unable to load full profile details");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
@@ -86,7 +111,9 @@ export function BatchResultsTable({ rows }: { rows: BatchLookupRow[] }) {
               <tr
                 key={row.id}
                 className="cursor-pointer transition hover:bg-slate-50"
-                onClick={() => setSelected(row.original.status === "success" ? row.original.result : null)}
+                onClick={() => {
+                  void selectRow(row.original);
+                }}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3">
@@ -98,6 +125,7 @@ export function BatchResultsTable({ rows }: { rows: BatchLookupRow[] }) {
           </tbody>
         </table>
       </div>
+      {detailMessage ? <p className="text-sm text-slate-500">{detailMessage}</p> : null}
       {selected ? <AccountDetail result={selected} /> : null}
     </div>
   );

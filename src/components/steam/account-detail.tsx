@@ -89,15 +89,15 @@ function ProfileTimeline({ result }: { result: SteamLookupResult }) {
   ];
 
   return (
-    <div className="mt-6 rounded-md border border-slate-200 bg-slate-950 p-4 text-white">
+    <div data-testid="profile-timeline" className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-200">Profile Timeline</h3>
-          <p className="mt-1 text-sm text-slate-400">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600">Profile Timeline</h3>
+          <p className="mt-1 text-sm text-slate-500">
             Public profile and badge timeline. Private profiles may return partial data.
           </p>
         </div>
-        <div className="text-sm font-semibold text-sky-200">
+        <div className="rounded bg-white px-3 py-1 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
           Level {timeline.currentLevel ?? "-"} {typeof timeline.currentXp === "number" ? `· ${timeline.currentXp} XP` : ""}
         </div>
       </div>
@@ -105,11 +105,11 @@ function ProfileTimeline({ result }: { result: SteamLookupResult }) {
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="rounded-md border border-white/10 bg-white/5 p-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div key={item.label} className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <Icon size={14} /> {item.label}
               </div>
-              <div className={item.muted ? "mt-2 text-sm font-semibold text-slate-500" : "mt-2 text-sm font-semibold text-white"}>
+              <div className={item.muted ? "mt-2 text-sm font-semibold text-slate-400" : "mt-2 text-sm font-semibold text-slate-950"}>
                 {item.value}
               </div>
             </div>
